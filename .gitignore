@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caching & Testing (TDD)
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Environments (uv)
+.venv/
+env/
+venv/
+
+# Environment variables & Keys (Segurança)
+.env
+.env.*
+!.env.example
+*.json
+!credentials.example.json
+
+# IDEs & System
+.vscode/
+.idea/
+.DS_Store
