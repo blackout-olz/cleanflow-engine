@@ -8,8 +8,16 @@ class EmailParserService:
     def parse(message_id: str, subject: str, body: str) -> Lead:
         source = EmailParserService._determine_source(subject, body)
 
-        name_raw = EmailParserService._extract_regex(r"(?:Name|Nome):\s*([^\n\r]+)", body)
-        first_name, last_name = EmailParserService._split_name(name_raw)
+        # Extração de Nome (suporta 'First Name' / 'Last Name' ou 'Name' unificado)
+        first_name_match = EmailParserService._extract_regex(r"First Name:\s*([^\n\r]+)", body)
+        last_name_match = EmailParserService._extract_regex(r"Last Name:\s*([^\n\r]+)", body)
+
+        if first_name_match:
+            first_name = first_name_match
+            last_name = last_name_match or ""
+        else:
+            name_raw = EmailParserService._extract_regex(r"(?:Name|Nome):\s*([^\n\r]+)", body)
+            first_name, last_name = EmailParserService._split_name(name_raw)
 
         email = EmailParserService._extract_regex(
             r"(?:Email):\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})", body
@@ -17,16 +25,26 @@ class EmailParserService:
         phone = EmailParserService._extract_regex(
             r"(?:Phone|Telefone):\s*([0-9+\-\s\(\)]+)", body
         )
-        address_raw = EmailParserService._extract_regex(
-            r"(?:Address|Endereço):\s*([^\n\r]+)", body
-        )
+
+        # Tratamento de Endereço (suporta 'Address' completo ou 'Location' do Google LSA)
+        address_raw = EmailParserService._extract_regex(r"(?:Address|Endereço):\s*([^\n\r]+)", body)
+        location_raw = EmailParserService._extract_regex(r"Location:\s*([^\n\r]+)", body)
 
         address = None
         if address_raw:
-            street = address_raw.split(",")[0].strip() if "," in address_raw else address_raw.strip()
-            address = Address(street=street)
+            parts = [part.strip() for part in address_raw.split(",")]
+            street = parts[0] if len(parts) > 0 else None
+            city = parts[1] if len(parts) > 1 else None
+            state = parts[2] if len(parts) > 2 else None
+            postal_code = parts[3] if len(parts) > 3 else None
+            address = Address(street=street, city=city, state=state, postal_code=postal_code)
+        elif location_raw:
+            address = Address(city=location_raw)
 
-        # Sanitiza telefone removendo caracteres não numéricos se presente
+        # Captura do bloco de notas/mensagem (ex: necessidades do cliente no Google Ads)
+        notes = EmailParserService._extract_regex(r"(?:Message|Notes):\s*([\s\S]+)", body)
+
+        # Sanitização do telefone para conter apenas dígitos
         sanitized_phone = re.sub(r"\D", "", phone) if phone else None
 
         return Lead(
@@ -38,12 +56,13 @@ class EmailParserService:
             source=source,
             status=LeadStatus.NEW,
             address=address,
+            notes=notes,
         )
 
     @staticmethod
     def _determine_source(subject: str, body: str) -> LeadSource:
         text = f"{subject} {body}".lower()
-        if "google ads" in text or "campaign lead" in text:
+        if "google ads" in text or "campaign lead" in text or "potential customer" in text or "lsa" in text:
             return LeadSource.GOOGLE_ADS
         elif "website" in text or "contact form" in text:
             return LeadSource.WEBSITE_FORM
